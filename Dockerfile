@@ -3,8 +3,6 @@ FROM eclipse-temurin:21-jdk-jammy AS builder
 
 RUN mkdir -p /usr/share/man/man1 && \
     apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
     unzip \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -18,8 +16,11 @@ RUN curl -fsSL "https://cdn.mendix.com/runtime/mendix-${MENDIX_VERSION}.tar.gz" 
 COPY deployment/app.mda /tmp/app.mda
 RUN unzip -q /tmp/app.mda -d /opt/mendix/app
 
-# 3. Install m2ee tools (PyPI package is unavailable; install from official GitHub tag)
-RUN pip install --no-cache-dir https://github.com/mendix/m2ee-tools/archive/refs/tags/v8.0.1.tar.gz
+# Keep the m2ee CLI source available for the runtime image. The package's
+# setup.py installs the library but does not register the CLI as an executable.
+RUN curl -fsSL \
+    "https://raw.githubusercontent.com/mendix/m2ee-tools/v8.0.1/src/m2ee.py" \
+    -o /tmp/m2ee
 
 # --- Stage 2: The Runtime Image ---
 FROM python:3.11-slim-bookworm
@@ -27,6 +28,7 @@ FROM python:3.11-slim-bookworm
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /opt/java/openjdk /opt/java/openjdk
 COPY --from=builder /opt/mendix /opt/mendix
+COPY --from=builder /tmp/m2ee /usr/local/bin/m2ee.py
 
 # Set environment for Java
 ENV JAVA_HOME=/opt/java/openjdk
@@ -34,7 +36,13 @@ ENV PATH="$JAVA_HOME/bin:$PATH"
 
 WORKDIR /opt/mendix/app
 
-RUN mkdir -p /opt/mendix/app/data/tmp /opt/mendix/app/data/log && \
+RUN pip install --no-cache-dir \
+        PyYAML \
+        https://github.com/mendix/m2ee-tools/archive/refs/tags/v8.0.1.tar.gz && \
+    printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/bin/m2ee.py "$@"' \
+        > /usr/local/bin/m2ee && \
+    chmod +x /usr/local/bin/m2ee /usr/local/bin/m2ee.py && \
+    mkdir -p /opt/mendix/app/data/tmp /opt/mendix/app/data/log && \
     cat > /opt/mendix/app/start.sh <<'EOF'
 #!/bin/sh
 set -eu
