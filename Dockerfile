@@ -1,9 +1,10 @@
 # --- Stage 1: The Build Environment ---
-FROM python:3.11-slim-bookworm AS builder
+FROM eclipse-temurin:21-jdk-jammy AS builder
 
 RUN mkdir -p /usr/share/man/man1 && \
     apt-get update && apt-get install -y \
-    openjdk-21-jdk-headless \
+    python3 \
+    python3-pip \
     unzip \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -24,11 +25,11 @@ RUN pip install --no-cache-dir https://github.com/mendix/m2ee-tools/archive/refs
 FROM python:3.11-slim-bookworm
 
 COPY --from=builder /usr/local /usr/local
-COPY --from=builder /usr/lib/jvm /usr/lib/jvm
+COPY --from=builder /opt/java/openjdk /opt/java/openjdk
 COPY --from=builder /opt/mendix /opt/mendix
 
 # Set environment for Java
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
 WORKDIR /opt/mendix/app
