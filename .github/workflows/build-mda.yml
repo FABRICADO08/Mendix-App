@@ -51,14 +51,6 @@ jobs:
           echo "MXBUILD_BIN=$mxbin" >> $GITHUB_OUTPUT
           echo "✅ Found MxBuild at: $mxbin"
 
-          echo "Inspecting Mendix Core API signatures"
-          while IFS= read -r jar; do
-            if jar tf "$jar" 2>/dev/null | grep -q '^com/mendix/core/Core.class$'; then
-              echo "Core class found in: $jar"
-              javap -classpath "$jar" com.mendix.core.Core | grep -E 'retrieveXPathQuery|retrieveId' || true
-            fi
-          done < <(find mx_tools -type f -name '*.jar' -print)
-
       - name: 4. Locate Project File
         id: find_mpr
         shell: bash

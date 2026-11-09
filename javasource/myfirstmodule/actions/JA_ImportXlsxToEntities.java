@@ -13,8 +13,8 @@ import com.mendix.systemwideinterfaces.core.IContext;
 import com.mendix.systemwideinterfaces.core.IMendixObject;
 import com.mendix.systemwideinterfaces.core.UserAction;
 import com.mendix.core.Core;
-import com.mendix.core.CoreException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.math.BigDecimal;
 import org.apache.poi.ss.usermodel.*;
@@ -139,11 +139,12 @@ public class JA_ImportXlsxToEntities extends UserAction<java.lang.Boolean>
 
 	// BEGIN EXTRA CODE
 	private IMendixObject retrieveSingleObject(IContext context, String entityName, String attr, String value)
-			throws CoreException {
+			throws Exception {
 		if (value == null || value.isEmpty())
 			return null;
 		String xpath = "//" + entityName + "[" + attr + "='" + value + "']";
-		List<IMendixObject> results = Core.retrieveXPathQuery(context, xpath);
+		List<IMendixObject> results = Core.retrieveXPathQueryAsync(context, xpath, 1, 0, Collections.emptyMap(), 0)
+				.get();
 		return results.isEmpty() ? null : results.get(0);
 	}
 
