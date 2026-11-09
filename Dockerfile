@@ -4,7 +4,7 @@ FROM python:3.11-slim-bookworm AS builder
 # Install Java (Required for Mendix Runtime) and Unzip
 RUN mkdir -p /usr/share/man/man1 && \
     apt-get update && apt-get install -y \
-    openjdk-21-jdk-headless \
+    openjdk-17-jdk-headless \
     unzip \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -33,7 +33,7 @@ COPY --from=builder /usr/lib/jvm /usr/lib/jvm
 COPY --from=builder /opt/mendix /opt/mendix
 
 # Set environment for Java
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
 WORKDIR /opt/mendix/app
