@@ -10,8 +10,9 @@ RUN mkdir -p /usr/share/man/man1 && \
 WORKDIR /opt/mendix/app
 
 ARG MENDIX_VERSION=11.16.0
-RUN curl -fsSL "https://cdn.mendix.com/runtime/mendix-${MENDIX_VERSION}.tar.gz" | \
-    tar -xz -C /opt/mendix/app
+RUN mkdir -p /opt/mendix/app/runtimes && \
+    curl -fsSL "https://cdn.mendix.com/runtime/mendix-${MENDIX_VERSION}.tar.gz" | \
+    tar -xz -C /opt/mendix/app/runtimes
 
 COPY deployment/app.mda /tmp/app.mda
 RUN unzip -q /tmp/app.mda -d /opt/mendix/app
@@ -21,7 +22,9 @@ RUN unzip -q /tmp/app.mda -d /opt/mendix/app
 # Use a distinct filename so it does not shadow the installed m2ee package.
 RUN curl -fsSL \
     "https://raw.githubusercontent.com/mendix/m2ee-tools/v8.0.1/src/m2ee.py" \
-    -o /tmp/m2ee
+    -o /tmp/m2ee && \
+    sed -i '/^if not sys.stdout.isatty():/,/^        sys.stdout = codecs.getwriter(locale.getpreferredencoding())(sys.stdout)$/d' \
+    /tmp/m2ee
 
 # --- Stage 2: The Runtime Image ---
 FROM python:3.11-slim-bookworm
