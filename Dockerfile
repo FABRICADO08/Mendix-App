@@ -35,36 +35,69 @@ ENV PATH="$JAVA_HOME/bin:$PATH"
 WORKDIR /opt/mendix/app
 
 RUN mkdir -p /opt/mendix/app/data/tmp /opt/mendix/app/data/log && \
-    printf '%s\n' \
-    'm2ee:' \
-    '  app_name: App' \
-    '  app_base: /opt/mendix/app' \
-    '  admin_port: 8090' \
-    '  admin_pass: change-me' \
-    '  runtime_port: 8080' \
-    '  runtime_listen_addresses: "*"' \
-    '  javaopts: ["-Dfile.encoding=UTF-8", "-Djava.io.tmpdir=/opt/mendix/app/data/tmp"]' \
-    '  logfile: /opt/mendix/app/data/log/runtime.log' \
-    'logging:' \
-    '  - name: FileSubscriber' \
-    '    type: file' \
-    '    autosubscribe: INFO' \
-    '    filename: /opt/mendix/app/data/log/runtime.log' \
-    'mxruntime:' \
-    '  DatabaseType: PostgreSQL' \
-    '  DatabaseHost: "127.0.0.1:5432"' \
-    '  DatabaseName: app' \
-    '  DatabaseUserName: app' \
-    '  DatabasePassword: app' \
-    '  ScheduledEventExecution: NONE' \
-    > /opt/mendix/app/m2ee.yaml
+    cat > /opt/mendix/app/start.sh <<'EOF'
+#!/bin/sh
+set -eu
 
-RUN printf '%s\n' \
-    '#!/bin/sh' \
-    'set -eu' \
-    'exec m2ee -c /opt/mendix/app/m2ee.yaml start' \
-    > /opt/mendix/app/start.sh && \
-    chmod +x /opt/mendix/app/start.sh
+: "${DATABASE_URL:?DATABASE_URL must be configured with the Neon PostgreSQL connection string}"
+: "${MENDIX_ADMIN_PASSWORD:?MENDIX_ADMIN_PASSWORD must be configured}"
+
+python3 - <<'PY'
+import os
+from urllib.parse import unquote, urlparse
+
+database_url = os.environ["DATABASE_URL"]
+parsed = urlparse(database_url)
+
+if parsed.scheme not in ("postgres", "postgresql"):
+    raise SystemExit("DATABASE_URL must use the postgres:// or postgresql:// scheme")
+if not parsed.hostname or not parsed.username or parsed.password is None:
+    raise SystemExit("DATABASE_URL must include a host, username, and password")
+
+def yaml_string(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+runtime_port = os.environ.get("PORT", "8080")
+database_host = parsed.hostname
+if parsed.port:
+    database_host = f"{database_host}:{parsed.port}"
+database_name = unquote(parsed.path.lstrip("/")) or "postgres"
+
+with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
+    config.write(
+        "\n".join(
+            [
+                "m2ee:",
+                "  app_name: App",
+                "  app_base: /opt/mendix/app",
+                "  admin_port: 8090",
+                f"  admin_pass: {yaml_string(os.environ['MENDIX_ADMIN_PASSWORD'])}",
+                f"  runtime_port: {runtime_port}",
+                '  runtime_listen_addresses: "*"',
+                '  javaopts: ["-Dfile.encoding=UTF-8", "-Djava.io.tmpdir=/opt/mendix/app/data/tmp"]',
+                "  logfile: /opt/mendix/app/data/log/runtime.log",
+                "logging:",
+                "  - name: FileSubscriber",
+                "    type: file",
+                "    autosubscribe: INFO",
+                "    filename: /opt/mendix/app/data/log/runtime.log",
+                "mxruntime:",
+                "  DatabaseType: PostgreSQL",
+                f"  DatabaseHost: {yaml_string(database_host)}",
+                f"  DatabaseName: {yaml_string(database_name)}",
+                f"  DatabaseUserName: {yaml_string(unquote(parsed.username))}",
+                f"  DatabasePassword: {yaml_string(unquote(parsed.password))}",
+                "  DatabaseUseSsl: true",
+                "  ScheduledEventExecution: NONE",
+                "",
+            ]
+        )
+    )
+PY
+
+exec m2ee -c /opt/mendix/app/m2ee.yaml start
+EOF
+RUN chmod +x /opt/mendix/app/start.sh
 
 EXPOSE 8080
 

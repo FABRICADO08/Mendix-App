@@ -21,27 +21,42 @@ docker build -t fabricado08-mendix .
 The image exposes the Mendix runtime on port `8080`. Start it with:
 
 ```bash
-docker run --rm -p 8080:8080 fabricado08-mendix
+docker run --rm -p 8080:8080 \
+  -e DATABASE_URL='postgresql://user:password@host:5432/database?sslmode=require' \
+  -e MENDIX_ADMIN_PASSWORD='replace-me' \
+  fabricado08-mendix
 ```
 
 Open [http://localhost:8080](http://localhost:8080) after the runtime starts.
 
-The current container configuration uses these development defaults:
+The container uses these defaults:
 
 | Setting | Default |
 | --- | --- |
 | Runtime port | `8080` |
 | Admin port | `8090` |
 | Database type | PostgreSQL |
-| Database host | `127.0.0.1:5432` |
-| Database name | `app` |
-| Database user | `app` |
-| Database password | `app` |
+| Database connection | `DATABASE_URL` |
+| Admin password | `MENDIX_ADMIN_PASSWORD` |
 
-The Docker image does not include PostgreSQL. Before using it in a real
-environment, update the generated `m2ee.yaml` configuration in the
-`Dockerfile` (or provide an equivalent runtime configuration) with the
-database connection details. Replace the default admin password as well.
+The image does not include PostgreSQL. Set `DATABASE_URL` to the pooled Neon
+connection string (including `sslmode=require`) and set
+`MENDIX_ADMIN_PASSWORD` before starting the container. The startup script
+parses the connection string, enables PostgreSQL SSL, and uses Render's
+`PORT` value when it is provided.
+
+## Render deployment
+
+The `Deploy to Render` workflow triggers a Render deploy hook after the
+`Build and Commit MDA` workflow succeeds on `main`. Configure the
+`RENDER_DEPLOY_HOOK_URL` repository secret with the deploy-hook URL from the
+Render service. In the Render web service, configure these environment
+variables:
+
+- `DATABASE_URL`: Neon pooled PostgreSQL connection string
+- `MENDIX_ADMIN_PASSWORD`: strong Mendix admin password
+
+The workflow can also be started manually from the Actions tab.
 
 ## Local development
 

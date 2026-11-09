@@ -1,1 +1,59 @@
+name: Deploy to Render
 
+on:
+  workflow_run:
+    workflows:
+      - Build and Commit MDA
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: render-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Trigger Render deployment
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL is not configured."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_status="$(
+            curl \
+              --fail-with-body \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              --request POST \
+              "$RENDER_DEPLOY_HOOK_URL"
+          )"
+
+          echo "Render deploy hook accepted the request (HTTP $http_status)."
+          if [ -s "$response_file" ]; then
+            cat "$response_file"
+          fi
