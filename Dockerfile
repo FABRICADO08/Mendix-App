@@ -18,6 +18,7 @@ RUN unzip -q /tmp/app.mda -d /opt/mendix/app
 
 # Keep the m2ee CLI source available for the runtime image. The package's
 # setup.py installs the library but does not register the CLI as an executable.
+# Use a distinct filename so it does not shadow the installed m2ee package.
 RUN curl -fsSL \
     "https://raw.githubusercontent.com/mendix/m2ee-tools/v8.0.1/src/m2ee.py" \
     -o /tmp/m2ee
@@ -28,7 +29,7 @@ FROM python:3.11-slim-bookworm
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /opt/java/openjdk /opt/java/openjdk
 COPY --from=builder /opt/mendix /opt/mendix
-COPY --from=builder /tmp/m2ee /usr/local/bin/m2ee.py
+COPY --from=builder /tmp/m2ee /usr/local/bin/m2ee-cli.py
 
 # Set environment for Java
 ENV JAVA_HOME=/opt/java/openjdk
@@ -39,9 +40,9 @@ WORKDIR /opt/mendix/app
 RUN pip install --no-cache-dir \
         PyYAML \
         https://github.com/mendix/m2ee-tools/archive/refs/tags/v8.0.1.tar.gz && \
-    printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/bin/m2ee.py "$@"' \
+    printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/bin/m2ee-cli.py "$@"' \
         > /usr/local/bin/m2ee && \
-    chmod +x /usr/local/bin/m2ee /usr/local/bin/m2ee.py && \
+    chmod +x /usr/local/bin/m2ee /usr/local/bin/m2ee-cli.py && \
     mkdir -p /opt/mendix/app/data/tmp /opt/mendix/app/data/log && \
     cat > /opt/mendix/app/start.sh <<'EOF'
 #!/bin/sh
