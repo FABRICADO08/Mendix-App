@@ -16,7 +16,6 @@ import com.mendix.core.Core;
 import com.mendix.core.CoreException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.HashMap;
 import java.math.BigDecimal;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -144,8 +143,7 @@ public class JA_ImportXlsxToEntities extends UserAction<java.lang.Boolean>
 		if (value == null || value.isEmpty())
 			return null;
 		String xpath = "//" + entityName + "[" + attr + "='" + value + "']";
-		List<IMendixObject> results = Core.retrieveXPathQuery(context, xpath, 1, 0,
-				new HashMap<String, String>(), 0);
+		List<IMendixObject> results = Core.retrieveXPathQuery(context, xpath);
 		return results.isEmpty() ? null : results.get(0);
 	}
 
