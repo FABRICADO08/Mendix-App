@@ -39,6 +39,7 @@ WORKDIR /opt/mendix/app
 
 RUN pip install --no-cache-dir \
         PyYAML \
+        requests \
         https://github.com/mendix/m2ee-tools/archive/refs/tags/v8.0.1.tar.gz && \
     printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/bin/m2ee-cli.py "$@"' \
         > /usr/local/bin/m2ee && \
