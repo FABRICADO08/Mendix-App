@@ -1,4 +1,4 @@
-name: Deploy to Render
+name: Deploy to Azure Web App
 
 on:
   workflow_run:
@@ -11,12 +11,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: render-production
+  group: azure-production
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Trigger Render deployment
+    name: Deploy to Azure Web App
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (
@@ -24,36 +24,30 @@ jobs:
         github.event.workflow_run.head_branch == 'main'
       )
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+
     steps:
-      - name: Trigger Render deploy hook
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        shell: bash
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to Azure Container Registry
         run: |
-          set -euo pipefail
+          az acr login --name YOUR_ACR_NAME
 
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK_URL is not configured."
-            exit 1
-          fi
+      - name: Build Docker image
+        run: |
+          docker build -t YOUR_ACR_NAME.azurecr.io/mendix-app:latest .
 
-          response_file="$(mktemp)"
-          trap 'rm -f "$response_file"' EXIT
+      - name: Push Docker image
+        run: |
+          docker push YOUR_ACR_NAME.azurecr.io/mendix-app:latest
 
-          http_status="$(
-            curl \
-              --fail-with-body \
-              --silent \
-              --show-error \
-              --output "$response_file" \
-              --write-out '%{http_code}' \
-              --request POST \
-              "$RENDER_DEPLOY_HOOK_URL"
-          )"
-
-          echo "Render deploy hook accepted the request (HTTP $http_status)."
-          if [ -s "$response_file" ]; then
-            cat "$response_file"
-          fi
+      - name: Deploy Web App Container
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: YOUR_WEBAPP_NAME
+          images: YOUR_ACR_NAME.azurecr.io/mendix-app:latest
