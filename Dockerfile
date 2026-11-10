@@ -22,7 +22,7 @@ RUN mkdir -p /opt/mendix/app/runtimes && \
         "https://cdn.mendix.com/runtime/mendix-${MENDIX_VERSION}.tar.gz" | \
     tar -xz -C /opt/mendix/app/runtimes
 
-# The Build and Commit MDA workflow must create this file first
+# build-mda.yml must create this file before the Docker build starts
 COPY deployment/app.mda /tmp/app.mda
 
 # Extract the compiled Mendix application
@@ -39,7 +39,7 @@ RUN curl -fsSL \
 
 
 # ------------------------------------------------------------
-# Stage 2: Runtime image
+# Stage 2: Mendix runtime image
 # ------------------------------------------------------------
 FROM python:3.11-slim-bookworm
 
@@ -57,6 +57,7 @@ RUN apt-get update && \
         curl && \
     rm -rf /var/lib/apt/lists/*
 
+# Copy Java, Mendix Runtime, application files and m2ee
 COPY --from=builder /opt/java/openjdk /opt/java/openjdk
 COPY --from=builder /opt/mendix /opt/mendix
 COPY --from=builder /tmp/m2ee-cli.py /usr/local/bin/m2ee-cli.py
@@ -76,6 +77,7 @@ RUN pip install --no-cache-dir \
         /opt/mendix/app/data/tmp \
         /opt/mendix/app/data/log
 
+# Create the container startup script
 RUN cat > /opt/mendix/app/start.sh <<'EOF'
 #!/bin/sh
 set -eu
@@ -92,6 +94,8 @@ if [ -z "${MENDIX_ADMIN_PASSWORD:-}" ]; then
     exit 1
 fi
 
+# Azure normally routes to the port configured by WEBSITES_PORT.
+# The Mendix runtime listens on PORT when provided, otherwise 10000.
 export MENDIX_RUNTIME_PORT="${PORT:-10000}"
 
 python3 - <<'PY'
@@ -104,8 +108,7 @@ parsed = urlparse(database_url)
 
 if parsed.scheme not in ("postgres", "postgresql"):
     print(
-        "ERROR: DATABASE_URL must begin with "
-        "postgres:// or postgresql://",
+        "ERROR: DATABASE_URL must begin with postgres:// or postgresql://",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -148,11 +151,10 @@ if not 1 <= runtime_port <= 65535:
 
 query = dict(parse_qsl(parsed.query, keep_blank_values=True))
 
-# Neon requires SSL.
+# Neon requires an encrypted PostgreSQL connection.
 query.setdefault("sslmode", "require")
 
-# channel_binding is valid for libpq/psql, but it may not be accepted
-# as a pgJDBC connection property. Remove it from the JDBC URL.
+# Remove the psql-specific parameter before building the JDBC URL.
 query.pop("channel_binding", None)
 
 jdbc_url = (
@@ -160,8 +162,10 @@ jdbc_url = (
     f"?{urlencode(query)}"
 )
 
+
 def yaml_string(value):
     return "'" + str(value).replace("'", "''") + "'"
+
 
 config_path = "/opt/mendix/app/m2ee.yaml"
 
@@ -180,58 +184,60 @@ configuration = [
         '  javaopts: ["-Dfile.encoding=UTF-8", '
         '"-Djava.io.tmpdir=/opt/mendix/app/data/tmp"]'
     ),
-    "  logfile: /o*t/mendix/app/data/log/runtime.log"*
+    "  logfile: /opt/mendix/app/data/log/runtime.log",
     "",
     "logging:",
-    "  - *ame: ConsoleSubscriber",
-    "    *ype: console",
-    "    autosubscr*be: INFO",
+    "  - name: ConsoleSubscriber",
+    "    type: console",
+    "    autosubscribe: INFO",
     "",
-    "mxruntime:*,
-    "  DatabaseType: PostgreSQL"*
-    f"  DatabaseJdbcUrl: {yaml_st*ing(jdbc_url)}",
-    f"  DatabaseU*erName: {yaml_string(username)}",
-  f"  DatabasePassword: {yaml_str*ng(password)}",
-    "  ScheduledEv*ntExecution: NONE",
+    "mxruntime:",
+    "  DatabaseType: PostgreSQL",
+    f"  DatabaseJdbcUrl: {yaml_string(jdbc_url)}",
+    f"  DatabaseUserName: {yaml_string(username)}",
+    f"  DatabasePassword: {yaml_string(password)}",
+    "  ScheduledEventExecution: NONE",
     "",
 ]
 
-wit* open(config_path, "w", encoding="*tf-8") as config:
-    config.write*"\n".join(configuration))
+with open(config_path, "w", encoding="utf-8") as config:
+    config.write("\n".join(configuration))
 
-print(f*Generated Mendix configuration at *config_path}")
-print(f"Mendix runt*me port: {runtime_port}")
-print(f"*atabase host: {host}")
-print(f"Dat*base name: {database}")
+print(f"Generated Mendix configuration at {config_path}")
+print(f"Mendix runtime port: {runtime_port}")
+print(f"Database host: {host}")
+print(f"Database name: {database}")
 PY
 
-mkdir *p /opt/mendix/app/data/tmp
-mkdir -* /opt/mendix/app/data/log
-touch /o*t/mendix/app/data/log/runtime.log
-*echo "Validating generated m2ee co*figuration..."
+mkdir -p /opt/mendix/app/data/tmp
+mkdir -p /opt/mendix/app/data/log
+touch /opt/mendix/app/data/log/runtime.log
 
-if ! m2ee -c /opt/*endix/app/m2ee.yaml start; then
-  status=$?
+echo "Starting Mendix Runtime..."
 
-    echo "ERROR: Mendi* failed to start. Exit code: ${sta*us}"
-    echo "========== Mendix r*ntime log =========="
+if m2ee -c /opt/mendix/app/m2ee.yaml start; then
+    echo "Mendix startup command completed."
+else
+    status=$?
+
+    echo "ERROR: Mendix failed to start. Exit code: ${status}"
+    echo "========== Mendix runtime log =========="
 
     if [ -f /opt/mendix/app/data/log/runtime.log ]; then
-        cat /opt/mendix/*pp/data/log/runtime.log
+        cat /opt/mendix/app/data/log/runtime.log
     else
-      echo "No runtime log was cre*ted."
+        echo "No runtime log was created."
     fi
 
-    echo "==========*============================="
-   exit "$status"
+    echo "========================================"
+    exit "$status"
 fi
 
-echo "Mendix st*rtup command completed."
-
-exec tai* -n +1 -F /opt/mendix/app/data/log*runtime.log
+exec tail -n +1 -F /opt/mendix/app/data/log/runtime.log
 EOF
 
-RUN chmod +x /opt*mendix/app/start.sh
+RUN chmod +x /opt/mendix/app/start.sh
 
 EXPOSE 10000
-*CMD ["/opt/mendix/app/start.sh"]
+
+CMD ["/opt/mendix/app/start.sh"]
