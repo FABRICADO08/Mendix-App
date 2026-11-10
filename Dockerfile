@@ -86,6 +86,9 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
                 '  javaopts: ["-Dfile.encoding=UTF-8", "-Djava.io.tmpdir=/opt/mendix/app/data/tmp"]',
                 "  logfile: /opt/mendix/app/data/log/runtime.log",
                 "logging:",
+                "  - name: ConsoleSubscriber",
+                "    type: console",
+                "    autosubscribe: INFO",
                 "  - name: FileSubscriber",
                 "    type: file",
                 "    autosubscribe: INFO",
@@ -98,6 +101,7 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
                 f"  DatabaseUserName: {yaml_string(unquote(parsed.username))}",
                 f"  DatabasePassword: {yaml_string(unquote(parsed.password))}",
                 "  DatabaseUseSsl: true",
+                "  DatabaseExtraParams: \"sslmode=require\"",
                 "  ScheduledEventExecution: NONE",
                 "",
             ]
@@ -105,17 +109,10 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
     )
 PY
 
-# Ensure log file exists before starting
 mkdir -p /opt/mendix/app/data/log
 touch /opt/mendix/app/data/log/runtime.log
 
-# Attempt to start Mendix and print status
-m2ee -c /opt/mendix/app/m2ee.yaml start || {
-    echo "ERROR: m2ee failed to start."
-    exit 1
-}
-
-# Stream the log file safely
+m2ee -c /opt/mendix/app/m2ee.yaml start
 exec tail -f /opt/mendix/app/data/log/runtime.log
 EOF
 RUN chmod +x /opt/mendix/app/start.sh
