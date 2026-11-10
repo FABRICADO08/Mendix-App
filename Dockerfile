@@ -105,7 +105,17 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
     )
 PY
 
-m2ee -c /opt/mendix/app/m2ee.yaml start
+# Ensure log file exists before starting
+mkdir -p /opt/mendix/app/data/log
+touch /opt/mendix/app/data/log/runtime.log
+
+# Attempt to start Mendix and print status
+m2ee -c /opt/mendix/app/m2ee.yaml start || {
+    echo "ERROR: m2ee failed to start."
+    exit 1
+}
+
+# Stream the log file safely
 exec tail -f /opt/mendix/app/data/log/runtime.log
 EOF
 RUN chmod +x /opt/mendix/app/start.sh
