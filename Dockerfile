@@ -67,7 +67,7 @@ if not parsed.hostname or not parsed.username or parsed.password is None:
 def yaml_string(value):
     return "'" + str(value).replace("'", "''") + "'"
 
-runtime_port = os.environ.get("PORT", "8080")
+runtime_port = os.environ.get("PORT", "10000")
 database_host = parsed.hostname
 database_port = parsed.port or 5432
 database_name = unquote(parsed.path.lstrip("/")) or "postgres"
@@ -105,10 +105,11 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
     )
 PY
 
-exec m2ee -c /opt/mendix/app/m2ee.yaml start
+m2ee -c /opt/mendix/app/m2ee.yaml start
+exec tail -f /opt/mendix/app/data/log/runtime.log
 EOF
 RUN chmod +x /opt/mendix/app/start.sh
 
-EXPOSE 8080
+EXPOSE 10000
 
 CMD ["/opt/mendix/app/start.sh"]
