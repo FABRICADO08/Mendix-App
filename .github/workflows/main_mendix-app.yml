@@ -1,64 +1,121 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy container app to Azure Web App - Mendix-App
+name: Build and deploy Mendix Docker to Azure Web App
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Build and Commit MDA
+    types:
+      - completed
     branches:
-      - 'main'
+      - main
+
   workflow_dispatch:
 
+concurrency:
+  group: mendix-azure-production
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: fabricado08/mendix-app
+  AZURE_WEBAPP_NAME: Mendix-App
+  AZURE_RESOURCE_GROUP: Mendix-App_group
+
 jobs:
-  build:
+  automatic-build-and-deploy:
+    name: Build image and deploy automatically
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout completed MDA build commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
-      - name: Log in to container registry
-        uses: docker/login-action@v2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          registry: ghcr.io/
-          username: ${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_A8B2154F00134CA9B8C01F1E10B7DE1A }}
-          password: ${{ secrets.AZUREAPPSERVICE_CONTAINERPASSWORD_07587BE363244A398222BA45BB5548D3 }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push container image to registry
-        uses: docker/build-push-action@v3
+      - name: Build and push Mendix container
+        uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          tags: ghcr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_A8B2154F00134CA9B8C01F1E10B7DE1A }}/fabricado08/mendix-app:${{ github.sha }}
           file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.workflow_run.head_sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
-    needs: build
-    
-    steps:
-      
-      - name: Login to Azure
+      - name: Log in to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_3D98EE9280BB4CECACB8FDB74B13F471 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_2DFEE18EF045406883B016947C6B35CD }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_75F68AF62BA448A4BE71C7B1A421C712 }}
 
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2
+      - name: Deploy new commit image to Azure Web App
+        uses: azure/webapps-deploy@v3
         with:
-          app-name: 'Mendix-App'
-          slot-name: 'Production'
-          images: 'ghcr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_A8B2154F00134CA9B8C01F1E10B7DE1A }}/fabricado08/mendix-app:${{ github.sha }}'
-          
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          images: >-
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{
+            github.event.workflow_run.head_sha }}
+
+      - name: Restart Azure Web App
+        run: |
+          az webapp restart \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ env.AZURE_WEBAPP_NAME }}"
+
+  manual-deploy-latest:
+    name: Manually deploy latest existing image
+    if: github.event_name == 'workflow_dispatch'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_3D98EE9280BB4CECACB8FDB74B13F471 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_2DFEE18EF045406883B016947C6B35CD }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_75F68AF62BA448A4BE71C7B1A421C712 }}
+
+      - name: Deploy latest existing image to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Restart Azure Web App
+        run: |
+          az webapp restart \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ env.AZURE_WEBAPP_NAME }}"
