@@ -17,9 +17,6 @@ RUN mkdir -p /opt/mendix/app/runtimes && \
 COPY deployment/app.mda /tmp/app.mda
 RUN unzip -q /tmp/app.mda -d /opt/mendix/app
 
-# Keep the m2ee CLI source available for the runtime image. The package's
-# setup.py installs the library but does not register the CLI as an executable.
-# Use a distinct filename so it does not shadow the installed m2ee package.
 RUN curl -fsSL \
     "https://raw.githubusercontent.com/mendix/m2ee-tools/v8.0.1/src/m2ee.py" \
     -o /tmp/m2ee && \
@@ -72,8 +69,7 @@ def yaml_string(value):
 
 runtime_port = os.environ.get("PORT", "8080")
 database_host = parsed.hostname
-if parsed.port:
-    database_host = f"{database_host}:{parsed.port}"
+database_port = parsed.port or 5432
 database_name = unquote(parsed.path.lstrip("/")) or "postgres"
 
 with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
@@ -97,6 +93,7 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
                 "mxruntime:",
                 "  DatabaseType: PostgreSQL",
                 f"  DatabaseHost: {yaml_string(database_host)}",
+                f"  DatabasePort: {database_port}",
                 f"  DatabaseName: {yaml_string(database_name)}",
                 f"  DatabaseUserName: {yaml_string(unquote(parsed.username))}",
                 f"  DatabasePassword: {yaml_string(unquote(parsed.password))}",
