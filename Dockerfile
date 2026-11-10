@@ -68,9 +68,18 @@ def yaml_string(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 runtime_port = os.environ.get("PORT", "10000")
-database_host = parsed.hostname
-database_port = parsed.port or 5432
-database_name = unquote(parsed.path.lstrip("/")) or "postgres"
+host = parsed.hostname
+port = parsed.port or 5432
+dbname = unquote(parsed.path.lstrip("/")) or "postgres"
+user = unquote(parsed.username)
+password = unquote(parsed.password)
+
+# Construct standard JDBC URL preserving Neon SSL parameters
+jdbc_url = f"jdbc:postgresql://{host}:{port}/{dbname}"
+if parsed.query:
+    jdbc_url += f"?{parsed.query}"
+else:
+    jdbc_url += "?sslmode=require"
 
 with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
     config.write(
@@ -95,13 +104,9 @@ with open("/opt/mendix/app/m2ee.yaml", "w", encoding="utf-8") as config:
                 "    filename: /opt/mendix/app/data/log/runtime.log",
                 "mxruntime:",
                 "  DatabaseType: PostgreSQL",
-                f"  DatabaseHost: {yaml_string(database_host)}",
-                f"  DatabasePort: {database_port}",
-                f"  DatabaseName: {yaml_string(database_name)}",
-                f"  DatabaseUserName: {yaml_string(unquote(parsed.username))}",
-                f"  DatabasePassword: {yaml_string(unquote(parsed.password))}",
-                "  DatabaseUseSsl: true",
-                "  DatabaseExtraParams: \"sslmode=require\"",
+                f"  DatabaseJdbcUrl: {yaml_string(jdbc_url)}",
+                f"  DatabaseUserName: {yaml_string(user)}",
+                f"  DatabasePassword: {yaml_string(password)}",
                 "  ScheduledEventExecution: NONE",
                 "",
             ]
